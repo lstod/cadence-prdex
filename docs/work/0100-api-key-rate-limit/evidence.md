@@ -163,3 +163,123 @@ rm -rf test.db .pytest_cache .mypy_cache .ruff_cache
 DATABASE_URL=sqlite:///./test.db /Users/mikaylastewart/.venvs/cadence/bin/python -m pytest -q --no-cov
 146 passed, 2 warnings in 6.29s
 ```
+
+### T5 (AC-8)
+
+No testable behavior: a manual end-to-end run against Postgres in the dev container. Verify: manual ok, signed off by lstod in session on 2026-10-08.
+
+Start the stack (`composeProjectName` `0100-api-key-rate-limit`):
+
+```
+$ npx -y @devcontainers/cli up --workspace-folder .
+{"outcome":"success","containerId":"8035748ad104…","composeProjectName":"0100-api-key-rate-limit","remoteUser":"root","remoteWorkspaceFolder":"/workspace"}
+```
+
+Create the tables and seed three keys. Raw keys are generated in the container and written only to `/tmp/evidence-keys.sh` there, as `export KEY=…`, `export KEY_B=…`, `export KEY_BLOCKED=…`:
+
+```
+$ npx -y @devcontainers/cli exec --workspace-folder . python -c '
+import importlib, pkgutil, secrets
+import app.models as m
+for mod in pkgutil.iter_modules(m.__path__):
+    importlib.import_module(f"app.models.{mod.name}")
+from app.db import Base, engine, SessionLocal
+from app.models.api_key import ApiKey
+Base.metadata.create_all(engine)
+db = SessionLocal()
+db.query(ApiKey).filter(ApiKey.name.in_(["evidence-a", "evidence-b", "evidence-blocked"])).delete(synchronize_session=False)
+lines = []
+for var, name, rpm in [("KEY", "evidence-a", None), ("KEY_B", "evidence-b", None), ("KEY_BLOCKED", "evidence-blocked", 0)]:
+    raw = "ak_" + secrets.token_hex(16)
+    db.add(ApiKey(key=raw, user_id=1, name=name, requests_per_minute=rpm))
+    lines.append(f"export {var}={raw}")
+db.commit()
+open("/tmp/evidence-keys.sh", "w").write("\n".join(lines) + "\n")
+print("tables:", sorted(Base.metadata.tables))
+print("seeded:", [(k.name, k.requests_per_minute) for k in db.query(ApiKey).all()])
+'
+tables: ['api_keys', 'integrations', 'notification_prefs', 'runs', 'users', 'webhooks', 'workflows']
+seeded: [('evidence-a', None), ('evidence-b', None), ('evidence-blocked', 0)]
+```
+
+Run the app: `npx -y @devcontainers/cli exec --workspace-folder . make run` (uvicorn on `localhost:8000` in the container); `curl -s localhost:8000/health` answered `{"ok":true}`.
+
+The loop, `/tmp/evidence-loop.sh` in the container, run with `bash /tmp/evidence-loop.sh`:
+
+```bash
+set -u
+. /tmp/evidence-keys.sh
+BASE=http://localhost:8000
+WF=$(curl -s -X POST "$BASE/workflows" -H "Content-Type: application/json" -d "{\"account_id\":\"$(cat /proc/sys/kernel/random/uuid)\",\"name\":\"evidence\",\"steps\":[{\"ordinal\":0,\"name\":\"alpha\",\"action\":\"noop\",\"config\":{}}]}" | python -c "import sys,json;print(json.load(sys.stdin)[\"id\"])")
+echo "workflow: $WF"
+run() { curl -s -i -X POST "$BASE/workflows/$WF/run" -H "X-API-Key: $1" -H "Content-Type: application/json" -d "{\"triggered_by\":\"evidence\"}"; }
+show() { echo "--- $1 at $(date -u +%s) ($(date -u +%H:%M:%S))"; run "$2" | tr -d "\r" | grep -iE "^HTTP/|^x-ratelimit|^\{"; echo; }
+while [ "$(date -u +%S)" != "00" ]; do sleep 0.2; done
+echo "minute boundary reached at $(date -u +%s) ($(date -u +%H:%M:%S))"
+show "KEY request 1" "$KEY"
+for i in $(seq 2 100); do
+  code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/workflows/$WF/run" -H "X-API-Key: $KEY" -H "Content-Type: application/json" -d "{\"triggered_by\":\"evidence\"}")
+  [ "$code" = 200 ] || echo "unexpected $code on request $i"
+done
+echo "KEY requests 2-100: all 200 (done at $(date -u +%s) ($(date -u +%H:%M:%S)))"
+show "KEY request 101" "$KEY"
+show "KEY_B request 1, same window" "$KEY_B"
+show "KEY_BLOCKED request 1" "$KEY_BLOCKED"
+NOW=$(date -u +%s); NEXT=$(( NOW - NOW % 60 + 60 ))
+echo "waiting for next minute boundary $NEXT"
+while [ "$(date -u +%s)" -lt "$NEXT" ]; do sleep 0.2; done
+show "KEY first request after the boundary" "$KEY"
+show "KEY_BLOCKED after the boundary" "$KEY_BLOCKED"
+```
+
+Output:
+
+```
+workflow: e454d6f1-1d62-4dfd-80de-8daf7de1c7cd
+minute boundary reached at 1791511980 (02:13:00)
+--- KEY request 1 at 1791511980 (02:13:00)
+HTTP/1.1 200 OK
+x-ratelimit-limit: 100
+x-ratelimit-remaining: 99
+x-ratelimit-reset: 1791512040
+{"id":"572a3661-fef3-4093-b72f-23181a896c5d","workflow_id":"e454d6f1-1d62-4dfd-80de-8daf7de1c7cd","account_id":"c3a3a87d-805d-4f55-a9ee-9b76b469f9e4","status":"succeeded","triggered_by":"evidence","input":{},"step_runs":[{"id":"abad5ca0-755c-4c94-b59e-a6bda1b813d8","step_id":"030a9386-89da-432a-91ab-c905c55bd1d1","ordinal":0,"status":"succeeded","output":{"action":"noop","name":"alpha"},"error":null}]}
+
+KEY requests 2-100: all 200 (done at 1791511980 (02:13:00))
+--- KEY request 101 at 1791511980 (02:13:00)
+HTTP/1.1 429 Too Many Requests
+x-ratelimit-limit: 100
+x-ratelimit-remaining: 0
+x-ratelimit-reset: 1791512040
+{"detail":"rate limit exceeded"}
+
+--- KEY_B request 1, same window at 1791511980 (02:13:00)
+HTTP/1.1 200 OK
+x-ratelimit-limit: 100
+x-ratelimit-remaining: 99
+x-ratelimit-reset: 1791512040
+{"id":"c94890ce-2ed6-4676-a709-d311681789e6","workflow_id":"e454d6f1-1d62-4dfd-80de-8daf7de1c7cd","account_id":"c3a3a87d-805d-4f55-a9ee-9b76b469f9e4","status":"succeeded","triggered_by":"evidence","input":{},"step_runs":[{"id":"86fa9e14-f28a-49f8-8e32-3985c7cc1169","step_id":"030a9386-89da-432a-91ab-c905c55bd1d1","ordinal":0,"status":"succeeded","output":{"action":"noop","name":"alpha"},"error":null}]}
+
+--- KEY_BLOCKED request 1 at 1791511980 (02:13:00)
+HTTP/1.1 429 Too Many Requests
+x-ratelimit-limit: 0
+x-ratelimit-remaining: 0
+x-ratelimit-reset: null
+{"detail":"api key blocked"}
+
+waiting for next minute boundary 1791512040
+--- KEY first request after the boundary at 1791512040 (02:14:00)
+HTTP/1.1 200 OK
+x-ratelimit-limit: 100
+x-ratelimit-remaining: 99
+x-ratelimit-reset: 1791512100
+{"id":"39e664e5-d133-47a5-bf46-b21e846122d8","workflow_id":"e454d6f1-1d62-4dfd-80de-8daf7de1c7cd","account_id":"c3a3a87d-805d-4f55-a9ee-9b76b469f9e4","status":"succeeded","triggered_by":"evidence","input":{},"step_runs":[{"id":"d00b3ad3-e6e4-4f9e-8957-2e784511196c","step_id":"030a9386-89da-432a-91ab-c905c55bd1d1","ordinal":0,"status":"succeeded","output":{"action":"noop","name":"alpha"},"error":null}]}
+
+--- KEY_BLOCKED after the boundary at 1791512040 (02:14:00)
+HTTP/1.1 429 Too Many Requests
+x-ratelimit-limit: 0
+x-ratelimit-remaining: 0
+x-ratelimit-reset: null
+{"detail":"api key blocked"}
+```
+
+Stop the stack: `docker compose -p 0100-api-key-rate-limit down`.
