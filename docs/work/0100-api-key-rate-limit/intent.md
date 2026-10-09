@@ -16,6 +16,7 @@ Each API key may make at most 100 requests per minute to endpoints that authenti
 - The window is fixed and resets every minute.
 - The limit is counted per API key, not globally: one key reaching its limit does not affect another key.
 - A key whose `requests_per_minute` is set to a value lower than 100 is limited to that value instead.
+- A key whose `requests_per_minute` is 0 or negative is blocked: every request returns `429 Too Many Requests` with a null reset time, since waiting does not lift the block.
 - Responses include `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers. `X-RateLimit-Reset` is the Unix time, in seconds, when the current window ends.
 
 ## Affected users and systems
@@ -33,4 +34,4 @@ Each API key may make at most 100 requests per minute to endpoints that authenti
 - Raising a key's limit above 100 per minute.
 
 ## Open questions
-- How should a `requests_per_minute` of 0 or a negative value be treated: block every request, or fall back to 100? To be settled in the spec.
+- How a null reset time appears on the wire for a blocked key (`X-RateLimit-Reset` omitted, or sent with an empty or literal `null` value) is to be settled in the spec.
