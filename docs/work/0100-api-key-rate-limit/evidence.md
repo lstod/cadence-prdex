@@ -79,6 +79,40 @@ implement-check: first 11 assertion, 0 guard, 0 not proved in 1s
 
 No guards, so `mutate` did not run.
 
+### T3
+
+`scripts/implement-check.sh first` on the 13 new test functions in `tests/routes/test_rate_limit_headers.py`, run before the middleware existed:
+
+```
+implement-check: fails on an assertion: tests/routes/test_rate_limit_headers.py::test_ac4_200_from_run_carries_three_headers_with_exact_values (AssertionError: assert {} == {'x-ratelimit-limit': '100', 'x-ratelimit-remaining)
+implement-check: fails on an assertion: tests/routes/test_rate_limit_headers.py::test_ac4_remaining_decreases_on_each_200_in_the_window (AssertionError: assert [{}, {}, {}] == [{'x-ratelimit-limit': '100', 'x-ratelimi)
+implement-check: fails on an assertion: tests/routes/test_rate_limit_headers.py::test_ac4_lowered_limit_200_carries_its_own_limit (AssertionError: assert {} == {'x-ratelimit-limit': '3', 'x-ratelimit-remaining':)
+implement-check: fails on an assertion: tests/routes/test_rate_limit_headers.py::test_ac4_404_for_unknown_workflow_carries_three_headers (AssertionError: assert {} == {'x-ratelimit-limit': '100', 'x-ratelimit-remaining)
+implement-check: fails on an assertion: tests/routes/test_rate_limit_headers.py::test_ac4_422_for_schema_invalid_json_body_carries_three_headers (AssertionError: assert {} == {'x-ratelimit-limit': '100', 'x-ratelimit-remaining)
+implement-check: fails on an assertion: tests/routes/test_rate_limit_headers.py::test_ac4_429_rate_limit_exceeded_carries_exact_headers_once (AssertionError: assert {} == {'x-ratelimit-limit': '100', 'x-ratelimit-remaining)
+implement-check: fails on an assertion: tests/routes/test_rate_limit_headers.py::test_ac4_malformed_json_422_carries_no_headers_and_is_not_counted (AssertionError: assert {} == {'x-ratelimit-limit': '100', 'x-ratelimit-remaining)
+implement-check: fails on an assertion: tests/routes/test_rate_limit_headers.py::test_ac2_reset_advances_to_next_window_end_after_clock_passes_it (AssertionError: assert {} == {'x-ratelimit-limit': '100', 'x-ratelimit-remaining)
+implement-check: fails on an assertion: tests/routes/test_rate_limit_headers.py::test_ac2_second_59_and_second_0_fall_in_different_windows (AssertionError: assert {} == {'x-ratelimit-limit': '3', 'x-ratelimit-remaining':)
+implement-check: passes before the change (guard): tests/routes/test_rate_limit_headers.py::test_ac6_blocked_key_429_carries_zero_zero_null
+implement-check: passes before the change (guard): tests/routes/test_rate_limit_headers.py::test_ac6_blocked_key_404_path_still_gets_blocked_429
+implement-check: passes before the change (guard): tests/routes/test_rate_limit_headers.py::test_ac7_401_carries_no_rate_headers
+implement-check: fails on an assertion: tests/routes/test_rate_limit_headers.py::test_ac7_401_between_keyed_requests_has_no_headers_and_no_count (AssertionError: assert {} == {'x-ratelimit-limit': '100', 'x-ratelimit-remaining)
+implement-check: first 10 assertion, 3 guard, 0 not proved in 1s
+```
+
+```
+implement-check: killed tests/routes/test_rate_limit_headers.py::test_ac6_blocked_key_429_carries_zero_zero_null (app/auth/api_key.py:60; AssertionError: assert {'x-ratelimit-limit': '0', 'x-ratelimit-remaining': '1', )
+implement-check: killed tests/routes/test_rate_limit_headers.py::test_ac6_blocked_key_404_path_still_gets_blocked_429 (app/auth/api_key.py:64; AssertionError: assert {'detail': 'api key disabled'} == {'detail': 'api key blo)
+implement-check: killed tests/routes/test_rate_limit_headers.py::test_ac7_401_carries_no_rate_headers (app/main.py:14; AssertionError: assert {'x-ratelimit-limit': '100'} == {})
+implement-check: mutate 3 breaks, 3 killed in 2s
+```
+
+| Task | Test | At | Break | Result |
+|---|---|---|---|---|
+| T3 | `tests/routes/test_rate_limit_headers.py::test_ac6_blocked_key_429_carries_zero_zero_null` | `app/auth/api_key.py:60` | `headers = _rate_limit_headers(0, 0, None)` -> `headers = _rate_limit_headers(0, 1, None)` | killed |
+| T3 | `tests/routes/test_rate_limit_headers.py::test_ac6_blocked_key_404_path_still_gets_blocked_429` | `app/auth/api_key.py:64` | `detail="api key blocked",` -> `detail="api key disabled",` | killed |
+| T3 | `tests/routes/test_rate_limit_headers.py::test_ac7_401_carries_no_rate_headers` | `app/main.py:14` | `headers = getattr(request.state, "rate_limit_headers", None)` -> `headers = getattr(request.state, "rate_limit_headers", {"X-RateLimit-Limit": "100"})` | killed |
+
 ## Verify
 
 ### T1 (AC-1, AC-2, AC-3, AC-5, AC-9)
@@ -100,4 +134,14 @@ app-lint-changed: no new ruff errors in 4 changed files
 rm -f test.db
 DATABASE_URL=sqlite:///./test.db /Users/mikaylastewart/.venvs/cadence/bin/python -m pytest -q --no-cov -x
 131 passed, 2 warnings in 5.62s
+```
+
+### T3 (AC-2, AC-4, AC-6, AC-7)
+
+```
+$ make app-test-fast
+app-lint-changed: no new ruff errors in 6 changed files
+rm -f test.db
+DATABASE_URL=sqlite:///./test.db /Users/mikaylastewart/.venvs/cadence/bin/python -m pytest -q --no-cov -x
+146 passed, 2 warnings in 6.20s
 ```
