@@ -5,7 +5,7 @@
 - Date: 2026-10-08
 - Source: idea
 - Risk: high
-- Status: draft
+- Status: accepted
 
 ## Problem
 Endpoints that authenticate with an API key accept unlimited requests. One client can send requests as fast as it likes and exhaust service capacity for every other client. The product owner and every API client feel this; the API-key auth dependency already carries a `TODO: rate limiting`.
