@@ -2,7 +2,7 @@
 
 - Spec: [spec.md](spec.md)
 - Spec approved: 2026-10-08
-- Status: draft
+- Status: approved
 
 ## Files that change
 | Path | Change | Why |
@@ -62,3 +62,4 @@ Overall: `make app-test-fast` passes after each code task, `make clean test` pas
 Revert the PR's merge commit. The change adds no tables, columns, migrations, or stored data, and the limiter's state is in memory only, so a revert and a restart return the API to no rate limiting. To disable the limit without a revert, override `get_rate_limiter` with a limiter that always allows; this needs a code change, so the revert is the supported path.
 
 ## Revision log
+- 2026-10-08: Gate 3 approved by lstod (lstod)
