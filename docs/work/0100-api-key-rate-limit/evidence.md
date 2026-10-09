@@ -145,3 +145,21 @@ rm -f test.db
 DATABASE_URL=sqlite:///./test.db /Users/mikaylastewart/.venvs/cadence/bin/python -m pytest -q --no-cov -x
 146 passed, 2 warnings in 6.20s
 ```
+
+### T4 (AC-9)
+
+No testable behavior: this task runs checks only and changes no code.
+
+```
+$ make typecheck && ~/.venvs/cadence/bin/python -m mypy --strict app/auth/rate_limit.py && make clean test
+/Users/mikaylastewart/.venvs/cadence/bin/python -m mypy --strict \
+	    app/services/workflows \
+	    app/services/billing \
+	    app/auth/passwords.py \
+	    app/auth/migrations.py
+Success: no issues found in 11 source files
+Success: no issues found in 1 source file
+rm -rf test.db .pytest_cache .mypy_cache .ruff_cache
+DATABASE_URL=sqlite:///./test.db /Users/mikaylastewart/.venvs/cadence/bin/python -m pytest -q --no-cov
+146 passed, 2 warnings in 6.29s
+```

@@ -66,3 +66,4 @@ Revert the PR's merge commit. The change adds no tables, columns, migrations, or
 - 2026-10-08: T1 done by /implement (claude-code); Verify: pass; attempts: 0; guards: 4 proved
 - 2026-10-08: T2 done by /implement (claude-code); Verify: pass; attempts: 0; guards: 0
 - 2026-10-08: T3 done by /implement (claude-code); Verify: pass; attempts: 0; guards: 3 proved
+- 2026-10-08: T4 done by /implement (claude-code); Verify: pass; attempts: 0; guards: skipped
