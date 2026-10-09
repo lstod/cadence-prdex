@@ -58,6 +58,27 @@ implement-check: mutate 4 breaks, 4 killed in 1s
 | T1 | `tests/auth/test_rate_limit.py::test_ac5_effective_limit[100-100]` | `app/auth/rate_limit.py:79` | `return min(requests_per_minute, DEFAULT_LIMIT)` -> `return min(requests_per_minute, DEFAULT_LIMIT - 1)` | killed |
 | T1 | `tests/auth/test_rate_limit.py::test_ac5_effective_limit[250-100]` | `app/auth/rate_limit.py:79` | `return min(requests_per_minute, DEFAULT_LIMIT)` -> `return max(requests_per_minute, DEFAULT_LIMIT)` | killed |
 
+### T2
+
+`scripts/implement-check.sh first` on the 11 new test functions in `tests/auth/test_api_key_rate_limit.py` (an ID without `[` covers its parametrized cases), run against `api_key_auth` before the change:
+
+```
+implement-check: fails on an assertion: tests/auth/test_api_key_rate_limit.py::test_ac1_default_key_gets_100_ok_then_429_rate_limit_exceeded (assert 200 == 429)
+implement-check: fails on an assertion: tests/auth/test_api_key_rate_limit.py::test_ac1_rate_limit_429_carries_limit_zero_remaining_and_window_end (assert 200 == 429)
+implement-check: fails on an assertion: tests/auth/test_api_key_rate_limit.py::test_ac1_first_request_is_handled_with_remaining_99 (assert [] == [(1, 100)])
+implement-check: fails on an assertion: tests/auth/test_api_key_rate_limit.py::test_ac3_second_key_unaffected_while_first_key_is_refused (assert 200 == 429)
+implement-check: fails on an assertion: tests/auth/test_api_key_rate_limit.py::test_ac5_lowered_limit_refuses_the_request_after_the_limit (assert 200 == 429)
+implement-check: fails on an assertion: tests/auth/test_api_key_rate_limit.py::test_ac5_rpm_3_is_refused_on_the_4th_request (assert [200, 200, 200, 200] == [200, 200, 200, 429])
+implement-check: fails on an assertion: tests/auth/test_api_key_rate_limit.py::test_ac5_limit_of_100_or_more_is_capped_at_100 (assert 200 == 429)
+implement-check: fails on an assertion: tests/auth/test_api_key_rate_limit.py::test_ac6_blocked_key_gets_429_on_every_request_and_never_hits_limiter (assert 200 == 429)
+implement-check: fails on an assertion: tests/auth/test_api_key_rate_limit.py::test_ac6_blocked_key_stays_blocked_after_the_window_ends (assert 200 == 429)
+implement-check: fails on an assertion: tests/auth/test_api_key_rate_limit.py::test_ac7_rejected_key_is_401_without_headers_and_not_counted (assert [] == [(1, 100)])
+implement-check: fails on an assertion: tests/auth/test_api_key_rate_limit.py::test_ac7_rejected_requests_between_valid_ones_do_not_change_the_count (assert [] == [99, 98, 97])
+implement-check: first 11 assertion, 0 guard, 0 not proved in 1s
+```
+
+No guards, so `mutate` did not run.
+
 ## Verify
 
 ### T1 (AC-1, AC-2, AC-3, AC-5, AC-9)
@@ -69,4 +90,14 @@ rm -f test.db
 DATABASE_URL=sqlite:///./test.db /Users/mikaylastewart/.venvs/cadence/bin/python -m pytest -q --no-cov -x
 113 passed, 2 warnings in 4.43s
 Success: no issues found in 1 source file
+```
+
+### T2 (AC-1, AC-3, AC-5, AC-6, AC-7)
+
+```
+$ make app-test-fast
+app-lint-changed: no new ruff errors in 4 changed files
+rm -f test.db
+DATABASE_URL=sqlite:///./test.db /Users/mikaylastewart/.venvs/cadence/bin/python -m pytest -q --no-cov -x
+131 passed, 2 warnings in 5.62s
 ```
