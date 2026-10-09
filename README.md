@@ -1,3 +1,12 @@
+## About this fork
+
+This fork of Cadence shows one ticket, per-API-key rate limiting, built end to end with PRdex, my own agentic SDLC kit. **Start with the pull request: https://github.com/lstod/cadence-prdex/pull/2**
+The ticket passed three human gates (intent, spec, and plan), a spec critique, test-first implementation with proof that each test can fail, and three review agents. Each step left an artifact in `docs/work/`, and every acceptance criterion has recorded proof.
+The kit itself is deliberately kept out of git, so only the work artifacts and the code appear here. That also means no CI or review runs on GitHub. The tests, checks, and review agents ran locally, and their findings are posted as a comment on the pull request.
+More on PRdex: https://lstod.github.io/Psite/#prdex
+Everything below this line is the original project's README.
+---
+
 Cadence — workflow automation for ops teams
 
 ## what is this
