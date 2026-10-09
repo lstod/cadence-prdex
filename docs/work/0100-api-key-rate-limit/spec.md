@@ -49,7 +49,7 @@ Add a per-API-key, fixed-window rate limit to the shared API-key auth dependency
 |---|---|---|---|
 | `X-RateLimit-Limit` | limit | limit | `0` |
 | `X-RateLimit-Remaining` | `limit - n` | `0` | `0` |
-| `X-RateLimit-Reset` | window end, integer Unix seconds | window end, integer Unix seconds | `null` (see Open questions) |
+| `X-RateLimit-Reset` | window end, integer Unix seconds | window end, integer Unix seconds | `null`, the literal word |
 
 `X-RateLimit-Reset` is an integer for every key that is not blocked; only a blocked key gets the non-integer `null`.
 
@@ -137,7 +137,7 @@ Failure cases:
 - **The limit resets on every restart and is per process.** Running several workers multiplies the effective limit. Accepted by the product owner; a shared backend is a follow-up.
 - **Fixed windows allow a burst at the boundary:** up to twice the limit in two seconds across a minute boundary. Inherent to the fixed window the intent asks for.
 - **The module-global default limiter carries state between tests** that use the real `api_key_auth`. Tests replace `get_rate_limiter` through `app.dependency_overrides` and clear it in teardown.
-- **`X-RateLimit-Reset: null` is not an integer.** A client that parses the header as an integer fails on a blocked key. Only blocked keys see it; see Open questions.
+- **`X-RateLimit-Reset: null` is not an integer.** A client that parses the header as an integer fails on a blocked key. Only blocked keys see it; lstod chose the literal `null` over leaving the header out (see Design decisions).
 - **AC-8 timing:** if the loop starts late in a minute, the window resets before request 101 and the run proves nothing. The loop waits for the next minute boundary before it starts.
 
 ## Design decisions
@@ -147,6 +147,7 @@ Failure cases:
 - **New module `app/auth/rate_limit.py`, not `app/middleware/throttle.py`.** Alternative: finish the placeholder. The placeholder is a sliding window keyed by the raw key string with module-global state and no clock injection; the intent asks for a fixed window, and the repo pattern needs a `Protocol` and an injectable clock. Leaving it alone keeps this change small; removing it is a follow-up that needs approval to delete files.
 - **Count per `ApiKey.id`, not per key string.** Keeps raw secrets out of the limiter's memory.
 - **Refused requests do not increment past the limit.** Keeps `X-RateLimit-Remaining` at `0` and the stored count bounded; the observable behaviour is the same either way.
+- **A blocked key gets `X-RateLimit-Reset: null`, the literal word** (decided by lstod, 2026-10-08). Alternatives: leave the header out, which would need exceptions in AC-4 and AC-6; send it empty, which has the same parsing problem and is harder to read. The literal `null` matches the intent's "null reset time" and keeps all three headers on every keyed response.
 - **The clock returns a timezone-aware `datetime`,** matching `idempotency.py`, and the limiter converts to integer Unix seconds.
 
 ## Verification
@@ -162,11 +163,6 @@ Failure cases:
 - All: `make app-test-fast`, then `make clean test` and `make verify`.
 
 ## Open questions
-- **How is the null reset time sent for a blocked key (AC-6)?** Each option has a cost:
-  - (a) `X-RateLimit-Reset: null`, the literal word. Keeps AC-4's "all three headers" true for every keyed response; a client that parses the header as an integer fails on a blocked key.
-  - (b) Leave `X-RateLimit-Reset` out for a blocked key. Every value sent stays an integer; AC-4 gains an exception ("except `X-RateLimit-Reset` for a blocked key") and AC-6 changes to "no `X-RateLimit-Reset` header".
-  - (c) Send it with an empty value. Same parse problem as (a), and harder to read.
-
-  Suggested default: (a), which matches the intent's "null reset time". The ACs above are written for (a); choosing (b) changes AC-4 and AC-6 as described.
+None stated.
 
 ## Revision log
