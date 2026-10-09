@@ -1,7 +1,7 @@
 # Spec: Rate-limit API endpoints per API key
 
 - Intent: [intent.md](intent.md)
-- Status: draft
+- Status: approved
 
 ## 1. Task
 Add a per-API-key, fixed-window rate limit to the shared API-key auth dependency, so every endpoint that authenticates with `X-API-Key` allows at most 100 requests per key per clock minute, or fewer when the key's `requests_per_minute` is set below 100. A request over the limit gets `429 Too Many Requests`. Every non-`5xx` response to a request whose key passed authentication carries `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset`. A key whose `requests_per_minute` is 0 or negative is always blocked. The counter lives in one app process.
@@ -166,3 +166,4 @@ Failure cases:
 None stated.
 
 ## Revision log
+- 2026-10-08: Gate 2 approved by lstod (lstod), in session. A seconds-until-reset header was discussed and judged not necessary; the spec is unchanged.
